@@ -3,6 +3,7 @@ from flask import Flask
 import threading
 import os
 import io
+import time
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -60,11 +61,23 @@ CHANNEL_GROUPS = [
 EMAIL_PASS_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}:[^\s]+$')
 PROXY_PATTERN = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$')
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 async def initialize_client(client_type):
     """Initialize Telegram client with persistent session"""
+    logger.info(f"Initializing {client_type} client...")
     if client_type == 'bot':
         client = TelegramClient(SESSION_FILES['bot'], API_ID, API_HASH)
         await client.start(bot_token=BOT_TOKEN)
+        logger.info("Bot client initialized successfully")
         return client
     
     # User client with StringSession persistence
@@ -72,11 +85,13 @@ async def initialize_client(client_type):
         with open(SESSION_FILES['user'], 'r') as f:
             session_str = f.read().strip()
         client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
+        logger.info("User client loaded from existing session")
     else:
         client = TelegramClient(StringSession(), API_ID, API_HASH)
         await client.start()
         with open(SESSION_FILES['user'], 'w') as f:
             f.write(client.session.save())
+        logger.info("New user client session created and saved")
     
     return client
 
@@ -84,14 +99,21 @@ async def scrape_files_from_group(client, target_channels, target_date):
     """Scrape and process files from a specific group of channels - entirely in memory"""
     all_lines = set()
     next_day = target_date + timedelta(days=1)
+    files_processed = 0
+    valid_lines_found = 0
     
-    for channel in target_channels:
+    for channel_idx, channel in enumerate(target_channels, 1):
         try:
+            logger.info(f"Processing channel {channel_idx}/{len(target_channels)}: {channel}")
+            
             # Check if client is still connected
             if not client.is_connected():
+                logger.info("Client disconnected, reconnecting...")
                 await client.connect()
                 
             entity = await client.get_entity(channel)
+            logger.info(f"Connected to channel: {channel}")
+            
             async for message in client.iter_messages(
                 entity,
                 offset_date=target_date,
@@ -115,15 +137,28 @@ async def scrape_files_from_group(client, target_channels, target_date):
                     )
                     
                     if is_text_file:
+                        files_processed += 1
+                        file_name = getattr(doc.attributes[0], 'file_name', 'unknown.txt')
+                        file_size = doc.size
+                        
+                        logger.info(f"Downloading file: {file_name} ({file_size} bytes)")
+                        download_start = time.time()
+                        
                         try:
                             # Download file content directly to memory
                             file_bytes = await client.download_media(message, bytes)
+                            download_time = time.time() - download_start
                             
                             if file_bytes:
+                                logger.info(f"Downloaded {len(file_bytes)} bytes in {download_time:.2f}s, processing content...")
+                                
                                 # Process the file content directly from memory
                                 file_text = file_bytes.decode('utf-8', errors='ignore')
+                                lines = file_text.splitlines()
                                 
-                                for line in file_text.splitlines():
+                                logger.info(f"File contains {len(lines)} lines, filtering valid combos...")
+                                
+                                for line in lines:
                                     line = line.strip()
                                     if (
                                         line and 
@@ -131,94 +166,160 @@ async def scrape_files_from_group(client, target_channels, target_date):
                                         EMAIL_PASS_PATTERN.match(line)
                                     ):
                                         all_lines.add(line)
+                                        valid_lines_found += 1
+                                
+                                logger.info(f"Processed file: {file_name} - Found {valid_lines_found} valid combos so far")
                                         
                         except Exception as e:
-                            print(f"Error processing file: {e}")
+                            logger.error(f"Error processing file {file_name}: {e}")
                             continue
+            
+            logger.info(f"Finished processing channel {channel}, found {valid_lines_found} valid combos total")
+            
         except Exception as e:
-            print(f"Error scraping {channel}: {e}")
+            logger.error(f"Error scraping {channel}: {e}")
             continue
     
+    logger.info(f"Group processing complete: Processed {files_processed} files, found {len(all_lines)} unique combos")
     return list(all_lines)
 
 async def scrape_files(client, target_date):
     """Scrape files from all channel groups one by one"""
     all_lines = set()
+    total_start_time = time.time()
+    
+    logger.info(f"Starting scraping process for date: {target_date}")
     
     for i, channel_group in enumerate(CHANNEL_GROUPS, 1):
-        print(f"Processing channel group {i}...")
+        group_start_time = time.time()
+        logger.info(f"Processing channel group {i}/{len(CHANNEL_GROUPS)} with {len(channel_group)} channels")
+        
         try:
             group_lines = await scrape_files_from_group(client, channel_group, target_date)
             all_lines.update(group_lines)
-            print(f"Found {len(group_lines)} combos in group {i}")
+            
+            group_time = time.time() - group_start_time
+            logger.info(f"Completed group {i} in {group_time:.2f}s - Found {len(group_lines)} combos in this group")
+            
         except Exception as e:
-            print(f"Error processing group {i}: {e}")
+            logger.error(f"Error processing group {i}: {e}")
             continue
+    
+    total_time = time.time() - total_start_time
+    logger.info(f"Scraping completed in {total_time:.2f}s - Total unique combos found: {len(all_lines)}")
     
     return list(all_lines)
 
 async def send_results(bot_client, user_id, lines):
     """Send processed results to user - entirely in memory"""
     if not lines:
+        logger.warning("No valid combos found to send")
         await bot_client.send_message(user_id, "❌ No valid combos found for the specified date.")
         return
     
+    logger.info(f"Preparing to send {len(lines)} combos to user")
+    
     random.shuffle(lines)
     chunk_size = random.randint(50000, 70000)
+    chunks = [lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)]
     
-    for i, chunk in enumerate([lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)], 1):
+    logger.info(f"Split into {len(chunks)} chunks for sending")
+    
+    for i, chunk in enumerate(chunks, 1):
+        send_start = time.time()
+        logger.info(f"Preparing chunk {i}/{len(chunks)} with {len(chunk)} combos")
+        
         # Create file in memory
         file_content = '\n'.join(chunk)
         file_bytes = file_content.encode('utf-8')
         file_io = io.BytesIO(file_bytes)
         file_io.name = f"combos_{i}.txt"
         
-        await bot_client.send_file(
-            user_id,
-            file_io,
-            caption=f"📅 Part {i} | 📝 {len(chunk):,} lines\n🔄 Mixed & Deduplicated"
-        )
+        logger.info(f"Sending chunk {i} ({len(file_bytes)} bytes)...")
+        
+        try:
+            await bot_client.send_file(
+                user_id,
+                file_io,
+                caption=f"📅 Part {i}/{len(chunks)} | 📝 {len(chunk):,} lines\n🔄 Mixed & Deduplicated"
+            )
+            
+            send_time = time.time() - send_start
+            logger.info(f"Successfully sent chunk {i} in {send_time:.2f}s")
+            
+        except Exception as e:
+            logger.error(f"Error sending chunk {i}: {e}")
+            # Try to send an error message
+            try:
+                await bot_client.send_message(
+                    user_id,
+                    f"❌ Error sending part {i}: {str(e)}"
+                )
+            except:
+                pass
+    
+    logger.info(f"Finished sending all {len(chunks)} chunks to user")
 
 async def setup_bot_handlers(bot_client, user_client):
     """Configure bot command handlers"""
     @bot_client.on(events.NewMessage(pattern='/start'))
     async def start_handler(event):
+        logger.info(f"Received /start command from user {event.sender_id}")
         await event.reply("""🤖 **Combo Scraper Bot**\n\n"""
                         """Send a date in DD.MM.YYYY format to scrape combos from that day.\n"""
                         """Example: `09.08.2025`""")
 
     @bot_client.on(events.NewMessage())
     async def message_handler(event):
+        # Ignore commands other than /start
+        if event.text.startswith('/') and not event.text.startswith('/start'):
+            return
+            
+        logger.info(f"Received message from user {event.sender_id}: {event.text}")
+        
         try:
             input_date = datetime.strptime(event.text, '%d.%m.%Y').date()
             if input_date > datetime.now().date():
+                logger.warning(f"User {event.sender_id} requested future date: {input_date}")
                 await event.reply("❌ Future dates not allowed. Enter a past date.")
                 return
         except ValueError:
             if not event.text.startswith('/'):
+                logger.warning(f"User {event.sender_id} sent invalid date format: {event.text}")
                 await event.reply("❌ Invalid format. Use DD.MM.YYYY")
             return
 
+        logger.info(f"User {event.sender_id} requested scraping for date: {input_date}")
         msg = await event.reply(f"🔍 Searching for {input_date.strftime('%d.%m.%Y')}...")
         
         try:
             # Ensure user client is connected
             if not user_client.is_connected():
+                logger.info("User client disconnected, reconnecting...")
                 await user_client.connect()
                 
             lines = await scrape_files(user_client, input_date)
             if not lines:
+                logger.info(f"No combos found for date {input_date}")
                 await msg.edit("❌ No valid combos found for this date.")
                 return
             
+            logger.info(f"Found {len(lines)} combos, preparing to send to user {event.sender_id}")
             await msg.edit(f"✅ Found {len(lines):,} combos\n📤 Preparing files...")
+            
             await send_results(bot_client, event.chat_id, lines)
+            
+            logger.info(f"Successfully sent all files to user {event.sender_id}")
             await msg.edit(f"🎉 Done! Sent {len(lines):,} combos")
+            
         except Exception as e:
+            logger.error(f"Error processing request from user {event.sender_id}: {e}")
             await msg.edit(f"❌ Error: {str(e)}")
 
 async def main():
     """Main application entry point"""
+    logger.info("Starting Telegram Combo Scraper Bot...")
+    
     # Initialize clients
     bot_client = await initialize_client('bot')
     user_client = await initialize_client('user')
@@ -226,20 +327,18 @@ async def main():
     # Setup bot handlers
     await setup_bot_handlers(bot_client, user_client)
     
-    print("Bot is running and ready to accept requests...")
+    logger.info("Bot is running and ready to accept requests...")
     await bot_client.run_until_disconnected()
     
     # Cleanup
     await user_client.disconnect()
+    logger.info("Bot stopped")
 
 if __name__ == '__main__':
-    # Configure logging
-    logging.basicConfig(level=logging.WARNING)
-    
     # Start Flask server in a separate thread
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    print(f"Flask server started on port {os.environ.get('PORT', 10000)}")
+    logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
     
     # Run application
     loop = asyncio.new_event_loop()
@@ -247,6 +346,8 @@ if __name__ == '__main__':
     try:
         loop.run_until_complete(main())
     except KeyboardInterrupt:
-        print("\nBot stopped by user")
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
     finally:
         loop.close()
