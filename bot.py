@@ -1,7 +1,8 @@
 # Add Flask web server for Render compatibility
-from flask import Flask, request
+from flask import Flask
 import threading
 import os
+import io
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -9,11 +10,6 @@ app = Flask(__name__)
 @app.route('/')
 def health_check():
     return "Telegram Combo Scraper Bot is running", 200
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    # Optional: Add a webhook endpoint if needed later
-    return "OK", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -85,10 +81,9 @@ async def initialize_client(client_type):
     return client
 
 async def scrape_files_from_group(client, target_channels, target_date):
-    """Scrape and process files from a specific group of channels"""
+    """Scrape and process files from a specific group of channels - entirely in memory"""
     all_lines = set()
     next_day = target_date + timedelta(days=1)
-    downloaded_files = []  # Store all downloaded file paths
     
     for channel in target_channels:
         try:
@@ -121,32 +116,28 @@ async def scrape_files_from_group(client, target_channels, target_date):
                     
                     if is_text_file:
                         try:
-                            file_path = await client.download_media(message)
-                            if file_path:
-                                downloaded_files.append(file_path)  # Save the file path
-                                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                                    for line in f:
-                                        line = line.strip()
-                                        if (
-                                            line and 
-                                            not PROXY_PATTERN.match(line) and 
-                                            EMAIL_PASS_PATTERN.match(line)
-                                        ):
-                                            all_lines.add(line)
+                            # Download file content directly to memory
+                            file_bytes = await client.download_media(message, bytes)
+                            
+                            if file_bytes:
+                                # Process the file content directly from memory
+                                file_text = file_bytes.decode('utf-8', errors='ignore')
+                                
+                                for line in file_text.splitlines():
+                                    line = line.strip()
+                                    if (
+                                        line and 
+                                        not PROXY_PATTERN.match(line) and 
+                                        EMAIL_PASS_PATTERN.match(line)
+                                    ):
+                                        all_lines.add(line)
+                                        
                         except Exception as e:
                             print(f"Error processing file: {e}")
                             continue
         except Exception as e:
             print(f"Error scraping {channel}: {e}")
             continue
-    
-    # Cleanup: Delete all downloaded files after processing
-    for file_path in downloaded_files:
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except Exception as e:
-            print(f"Error deleting file {file_path}: {e}")
     
     return list(all_lines)
 
@@ -167,7 +158,7 @@ async def scrape_files(client, target_date):
     return list(all_lines)
 
 async def send_results(bot_client, user_id, lines):
-    """Send processed results to user"""
+    """Send processed results to user - entirely in memory"""
     if not lines:
         await bot_client.send_message(user_id, "❌ No valid combos found for the specified date.")
         return
@@ -176,20 +167,17 @@ async def send_results(bot_client, user_id, lines):
     chunk_size = random.randint(50000, 70000)
     
     for i, chunk in enumerate([lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)], 1):
-        filename = f"combos_{i}.txt"
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(chunk))
+        # Create file in memory
+        file_content = '\n'.join(chunk)
+        file_bytes = file_content.encode('utf-8')
+        file_io = io.BytesIO(file_bytes)
+        file_io.name = f"combos_{i}.txt"
         
         await bot_client.send_file(
             user_id,
-            filename,
+            file_io,
             caption=f"📅 Part {i} | 📝 {len(chunk):,} lines\n🔄 Mixed & Deduplicated"
         )
-        # Delete the temporary combo file after sending
-        try:
-            os.remove(filename)
-        except Exception as e:
-            print(f"Error deleting combo file {filename}: {e}")
 
 async def setup_bot_handlers(bot_client, user_client):
     """Configure bot command handlers"""
