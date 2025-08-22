@@ -1,4 +1,25 @@
+# Add Flask web server for Render compatibility
+from flask import Flask, request
+import threading
 import os
+
+# Initialize Flask app
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return "Telegram Combo Scraper Bot is running", 200
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    # Optional: Add a webhook endpoint if needed later
+    return "OK", 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+# Rest of your Telegram bot code
 import re
 import random
 import asyncio
@@ -8,10 +29,10 @@ from telethon import TelegramClient, events
 from telethon.tl.types import MessageMediaDocument
 from telethon.sessions import StringSession
 
-# Configuration
-BOT_TOKEN = '8479206171:AAF8Jc5dvQ-KfMPgM9cjwLP3oG0hwyUZYTQ'
-API_ID = 29464258
-API_HASH = '5ca1ad6d6e0aa144a6e407e0af64510f'
+# Configuration - use environment variables for security
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '8479206171:AAF8Jc5dvQ-KfMPgM9cjwLP3oG0hwyUZYTQ')
+API_ID = int(os.environ.get('API_ID', 29464258))
+API_HASH = os.environ.get('API_HASH', '5ca1ad6d6e0aa144a6e407e0af64510f')
 SESSION_FILES = {
     'bot': 'bot.session',
     'user': 'user.session'
@@ -226,6 +247,11 @@ async def main():
 if __name__ == '__main__':
     # Configure logging
     logging.basicConfig(level=logging.WARNING)
+    
+    # Start Flask server in a separate thread
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    print(f"Flask server started on port {os.environ.get('PORT', 10000)}")
     
     # Run application
     loop = asyncio.new_event_loop()
