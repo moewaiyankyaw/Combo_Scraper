@@ -41,19 +41,25 @@ CHANNEL_GROUPS = [
     [
         'https://t.me/+E5x65zAb-GphNjlk',
         'https://t.me/+_7HlFcVVpyYwMjIx',
-        'https://t.me/+U9YOffLRn5JjYjYy'
+        'https://t.me/+U9YOffLRn5JjYjYy',
+        'https://t.me/DuffyData',
+        'https://t.me/+tvRxredx2i0zMTgy'
     ],
     # Group 2
     [
         'https://t.me/freedatabasegroupp',
         'https://t.me/voscall_cloud',
-        'https://t.me/BrowzDataCloud'
+        'https://t.me/BrowzDataCloud',
+        'https://t.me/kingofcracking2',
+        'https://t.me/+4TnRrTK881g1Y2Ri',
+        'https://t.me/ninjapubliccloud'
     ],
     # Group 3
     [
-        'https://t.me/combospublic123',
+        'https://t.me/+CVyvhBgtDfI1YzRi',
         'https://t.me/+wE9VErPqOPgyMWFk',
-        'http://t.me/+QOWpGkEz6eVlZTQ1'
+        'http://t.me/+QOWpGkEz6eVlZTQ1',
+        'https://t.me/combolistmailsgold'
     ]
 ]
 
@@ -220,7 +226,7 @@ async def send_results(bot_client, user_id, lines):
     logger.info(f"Preparing to send {len(lines)} combos to user")
     
     random.shuffle(lines)
-    chunk_size = random.randint(50000, 70000)
+    chunk_size = random.randint(100000, 150000)
     chunks = [lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)]
     
     logger.info(f"Split into {len(chunks)} chunks for sending")
