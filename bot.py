@@ -84,9 +84,88 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Test download parameters
-TEST_FILE_URL = "https://github.com/arcdetri/sample-blog/raw/master/public/sample.txt"
-TEST_FILE_SIZE = 44  # bytes
+# Multiple test file options with timeouts
+TEST_FILE_OPTIONS = [
+    "https://httpbin.org/bytes/1024",  # 1KB test file
+    "https://httpbin.org/bytes/512",   # 512B test file
+    "https://httpbin.org/bytes/256",   # 256B test file
+]
+
+async def test_download_speed():
+    """Test download speed by downloading a small test file with timeout"""
+    import aiohttp
+    import math
+    
+    logger.info("Starting download speed test...")
+    
+    # Try each test file until one works
+    for test_url in TEST_FILE_OPTIONS:
+        try:
+            start_time = time.time()
+            
+            # Set timeout for the download
+            timeout = aiohttp.ClientTimeout(total=10)  # 10 second timeout
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(test_url) as response:
+                    if response.status == 200:
+                        content = await response.read()
+                        end_time = time.time()
+                        
+                        download_time = end_time - start_time
+                        file_size = len(content)
+                        
+                        # Calculate speed in different units
+                        speed_bps = file_size / download_time
+                        speed_kbps = speed_bps / 1024
+                        speed_mbps = speed_kbps / 1024
+                        
+                        logger.info(f"Download test completed: {file_size} bytes in {download_time:.3f}s")
+                        
+                        return {
+                            "success": True,
+                            "file_size": file_size,
+                            "download_time": download_time,
+                            "speed_bps": speed_bps,
+                            "speed_kbps": speed_kbps,
+                            "speed_mbps": speed_mbps,
+                            "ping_ms": download_time * 1000,
+                            "test_url": test_url
+                        }
+                    else:
+                        logger.warning(f"Download test failed with status: {response.status}, trying next URL")
+                        continue
+                        
+        except asyncio.TimeoutError:
+            logger.warning(f"Download test timed out for {test_url}, trying next URL")
+            continue
+        except Exception as e:
+            logger.warning(f"Download test error for {test_url}: {e}, trying next URL")
+            continue
+    
+    # If all test URLs failed, try a fallback method
+    logger.warning("All download tests failed, using fallback method")
+    try:
+        # Simple fallback - just measure response time to a DNS query
+        import socket
+        start_time = time.time()
+        socket.gethostbyname('google.com')
+        ping_time = (time.time() - start_time) * 1000
+        
+        return {
+            "success": True,
+            "file_size": 0,
+            "download_time": ping_time / 1000,
+            "speed_bps": 0,
+            "speed_kbps": 0,
+            "speed_mbps": 0,
+            "ping_ms": ping_time,
+            "fallback": True,
+            "message": "Used fallback DNS test"
+        }
+    except Exception as e:
+        logger.error(f"Fallback test also failed: {e}")
+        return {"success": False, "error": "All download tests failed"}
 
 async def initialize_client(client_type):
     """Initialize Telegram client with persistent session"""
@@ -111,49 +190,6 @@ async def initialize_client(client_type):
         logger.info("New user client session created and saved")
     
     return client
-
-async def test_download_speed():
-    """Test download speed by downloading a small test file"""
-    import aiohttp
-    import math
-    
-    logger.info("Starting download speed test...")
-    
-    try:
-        start_time = time.time()
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.get(TEST_FILE_URL) as response:
-                if response.status == 200:
-                    content = await response.read()
-                    end_time = time.time()
-                    
-                    download_time = end_time - start_time
-                    file_size = len(content)
-                    
-                    # Calculate speed in different units
-                    speed_bps = file_size / download_time
-                    speed_kbps = speed_bps / 1024
-                    speed_mbps = speed_kbps / 1024
-                    
-                    logger.info(f"Download test completed: {file_size} bytes in {download_time:.3f}s")
-                    
-                    return {
-                        "success": True,
-                        "file_size": file_size,
-                        "download_time": download_time,
-                        "speed_bps": speed_bps,
-                        "speed_kbps": speed_kbps,
-                        "speed_mbps": speed_mbps,
-                        "ping_ms": download_time * 1000
-                    }
-                else:
-                    logger.error(f"Download test failed with status: {response.status}")
-                    return {"success": False, "error": f"HTTP Status: {response.status}"}
-                    
-    except Exception as e:
-        logger.error(f"Download test error: {e}")
-        return {"success": False, "error": str(e)}
 
 async def scrape_files_from_group(client, target_channels, target_date):
     """Scrape and process files from a specific group of channels - entirely in memory"""
@@ -335,32 +371,51 @@ async def setup_bot_handlers(bot_client, user_client):
         logger.info(f"Received /ping command from user {event.sender_id}")
         
         # Send initial response
-        msg = await event.reply("🏓 Pong! Testing connection and download speed...")
+        msg = await event.reply("🏓 Pong! Testing connection...")
         
         # Test 1: Bot response time
-        bot_response_time = time.time()
+        bot_response_start = time.time()
         await msg.edit("🏓 Testing bot response time...")
-        bot_response_time = (time.time() - bot_response_time) * 1000  # Convert to ms
+        bot_response_time = (time.time() - bot_response_start) * 1000  # Convert to ms
         
-        # Test 2: Download speed test
-        await msg.edit("🌐 Testing download speed...")
-        speed_test_result = await test_download_speed()
+        # Test 2: Download speed test with timeout
+        await msg.edit("🌐 Testing download speed (max 15s)...")
         
+        # Run download test with a timeout to prevent hanging
+        try:
+            speed_test_task = asyncio.create_task(test_download_speed())
+            speed_test_result = await asyncio.wait_for(speed_test_task, timeout=15.0)
+        except asyncio.TimeoutError:
+            speed_test_result = {"success": False, "error": "Download test timed out after 15 seconds"}
+            logger.error("Download test timed out")
+        except Exception as e:
+            speed_test_result = {"success": False, "error": f"Download test error: {str(e)}"}
+            logger.error(f"Download test failed: {e}")
+        
+        # Format the results
         if speed_test_result["success"]:
-            # Format the results
-            response_message = (
-                f"✅ **Bot Status Report**\n\n"
-                f"🤖 **Bot Response Time**: {bot_response_time:.2f} ms\n"
-                f"🌐 **Download Speed**: {speed_test_result['speed_mbps']:.2f} Mbps\n"
-                f"📊 **Download Test**: {speed_test_result['file_size']} bytes in {speed_test_result['download_time']:.3f}s\n"
-                f"📡 **Ping Time**: {speed_test_result['ping_ms']:.2f} ms\n\n"
-                f"🟢 **Status**: Online and responsive"
-            )
+            if speed_test_result.get("fallback", False):
+                response_message = (
+                    f"✅ **Bot Status Report**\n\n"
+                    f"🤖 **Bot Response Time**: {bot_response_time:.2f} ms\n"
+                    f"📡 **Network Latency**: {speed_test_result['ping_ms']:.2f} ms\n"
+                    f"ℹ️ **Note**: {speed_test_result.get('message', 'Used fallback test')}\n\n"
+                    f"🟢 **Status**: Online and responsive"
+                )
+            else:
+                response_message = (
+                    f"✅ **Bot Status Report**\n\n"
+                    f"🤖 **Bot Response Time**: {bot_response_time:.2f} ms\n"
+                    f"🌐 **Download Speed**: {speed_test_result['speed_mbps']:.2f} Mbps\n"
+                    f"📊 **Download Test**: {speed_test_result['file_size']} bytes in {speed_test_result['download_time']:.3f}s\n"
+                    f"📡 **Ping Time**: {speed_test_result['ping_ms']:.2f} ms\n\n"
+                    f"🟢 **Status**: Online and responsive"
+                )
         else:
             response_message = (
                 f"⚠️ **Bot Status Report**\n\n"
                 f"🤖 **Bot Response Time**: {bot_response_time:.2f} ms\n"
-                f"❌ **Download Test Failed**: {speed_test_result['error']}\n\n"
+                f"❌ **Download Test Failed**: {speed_test_result.get('error', 'Unknown error')}\n\n"
                 f"🟡 **Status**: Online but download test failed"
             )
         
