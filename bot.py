@@ -12,9 +12,16 @@ app = Flask(__name__)
 def health_check():
     return "Telegram Combo Scraper Bot is running", 200
 
+@app.route('/health')
+def health():
+    return "OK", 200
+
 def run_flask():
+    # Use the PORT environment variable provided by Render
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    host = '0.0.0.0'  # Bind to all interfaces
+    print(f"Starting Flask server on {host}:{port}")
+    app.run(host=host, port=port, debug=False, use_reloader=False)
 
 # Rest of your Telegram bot code
 import re
@@ -77,6 +84,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Test download parameters
+TEST_FILE_URL = "https://github.com/arcdetri/sample-blog/raw/master/public/sample.txt"
+TEST_FILE_SIZE = 44  # bytes
+
 async def initialize_client(client_type):
     """Initialize Telegram client with persistent session"""
     logger.info(f"Initializing {client_type} client...")
@@ -100,6 +111,49 @@ async def initialize_client(client_type):
         logger.info("New user client session created and saved")
     
     return client
+
+async def test_download_speed():
+    """Test download speed by downloading a small test file"""
+    import aiohttp
+    import math
+    
+    logger.info("Starting download speed test...")
+    
+    try:
+        start_time = time.time()
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(TEST_FILE_URL) as response:
+                if response.status == 200:
+                    content = await response.read()
+                    end_time = time.time()
+                    
+                    download_time = end_time - start_time
+                    file_size = len(content)
+                    
+                    # Calculate speed in different units
+                    speed_bps = file_size / download_time
+                    speed_kbps = speed_bps / 1024
+                    speed_mbps = speed_kbps / 1024
+                    
+                    logger.info(f"Download test completed: {file_size} bytes in {download_time:.3f}s")
+                    
+                    return {
+                        "success": True,
+                        "file_size": file_size,
+                        "download_time": download_time,
+                        "speed_bps": speed_bps,
+                        "speed_kbps": speed_kbps,
+                        "speed_mbps": speed_mbps,
+                        "ping_ms": download_time * 1000
+                    }
+                else:
+                    logger.error(f"Download test failed with status: {response.status}")
+                    return {"success": False, "error": f"HTTP Status: {response.status}"}
+                    
+    except Exception as e:
+        logger.error(f"Download test error: {e}")
+        return {"success": False, "error": str(e)}
 
 async def scrape_files_from_group(client, target_channels, target_date):
     """Scrape and process files from a specific group of channels - entirely in memory"""
@@ -226,7 +280,7 @@ async def send_results(bot_client, user_id, lines):
     logger.info(f"Preparing to send {len(lines)} combos to user")
     
     random.shuffle(lines)
-    chunk_size = random.randint(100000, 150000)
+    chunk_size = random.randint(50000, 70000)
     chunks = [lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)]
     
     logger.info(f"Split into {len(chunks)} chunks for sending")
@@ -273,12 +327,50 @@ async def setup_bot_handlers(bot_client, user_client):
         logger.info(f"Received /start command from user {event.sender_id}")
         await event.reply("""🤖 **Combo Scraper Bot**\n\n"""
                         """Send a date in DD.MM.YYYY format to scrape combos from that day.\n"""
-                        """Example: `09.08.2025`""")
+                        """Example: `09.08.2025`\n\n"""
+                        """Use /ping to test bot response time and download speed""")
+
+    @bot_client.on(events.NewMessage(pattern='/ping'))
+    async def ping_handler(event):
+        logger.info(f"Received /ping command from user {event.sender_id}")
+        
+        # Send initial response
+        msg = await event.reply("🏓 Pong! Testing connection and download speed...")
+        
+        # Test 1: Bot response time
+        bot_response_time = time.time()
+        await msg.edit("🏓 Testing bot response time...")
+        bot_response_time = (time.time() - bot_response_time) * 1000  # Convert to ms
+        
+        # Test 2: Download speed test
+        await msg.edit("🌐 Testing download speed...")
+        speed_test_result = await test_download_speed()
+        
+        if speed_test_result["success"]:
+            # Format the results
+            response_message = (
+                f"✅ **Bot Status Report**\n\n"
+                f"🤖 **Bot Response Time**: {bot_response_time:.2f} ms\n"
+                f"🌐 **Download Speed**: {speed_test_result['speed_mbps']:.2f} Mbps\n"
+                f"📊 **Download Test**: {speed_test_result['file_size']} bytes in {speed_test_result['download_time']:.3f}s\n"
+                f"📡 **Ping Time**: {speed_test_result['ping_ms']:.2f} ms\n\n"
+                f"🟢 **Status**: Online and responsive"
+            )
+        else:
+            response_message = (
+                f"⚠️ **Bot Status Report**\n\n"
+                f"🤖 **Bot Response Time**: {bot_response_time:.2f} ms\n"
+                f"❌ **Download Test Failed**: {speed_test_result['error']}\n\n"
+                f"🟡 **Status**: Online but download test failed"
+            )
+        
+        await msg.edit(response_message)
+        logger.info(f"Ping test completed for user {event.sender_id}")
 
     @bot_client.on(events.NewMessage())
     async def message_handler(event):
-        # Ignore commands other than /start
-        if event.text.startswith('/') and not event.text.startswith('/start'):
+        # Ignore commands other than /start and /ping
+        if event.text.startswith('/') and event.text not in ['/start', '/ping']:
             return
             
         logger.info(f"Received message from user {event.sender_id}: {event.text}")
@@ -341,10 +433,14 @@ async def main():
     logger.info("Bot stopped")
 
 if __name__ == '__main__':
+    # Get the port from Render's environment variable
+    port = int(os.environ.get("PORT", 10000))
+    logger.info(f"Render provided PORT: {port}")
+    
     # Start Flask server in a separate thread
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    logger.info(f"Flask server started on port {os.environ.get('PORT', 10000)}")
+    logger.info(f"Flask server started on port {port}")
     
     # Run application
     loop = asyncio.new_event_loop()
