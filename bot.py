@@ -166,8 +166,6 @@ async def initialize_client(client_type):
 async def scrape_files_from_group(client, target_channels, target_date):
     """Scrape and process files from a specific group of channels - entirely in memory"""
     all_lines = set()
-    start_of_day = datetime.combine(target_date, datetime.min.time())
-    end_of_day = datetime.combine(target_date, datetime.max.time())
     
     for channel in target_channels:
         try:
@@ -177,54 +175,53 @@ async def scrape_files_from_group(client, target_channels, target_date):
                 
             entity = await client.get_entity(channel)
             
+            # Calculate date range for filtering
+            start_date = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0)
+            end_date = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59)
+            
             # Search for messages on the specific date
-            async for message in client.iter_messages(
-                entity,
-                offset_date=end_of_day,
-                reverse=True
-            ):
+            async for message in client.iter_messages(entity):
                 # Stop if we've gone past the target date
-                if message.date < start_of_day:
+                if message.date < start_date:
                     break
                     
                 # Only process messages from the target date
-                if (message.date.date() == target_date and 
-                    message.media and 
-                    isinstance(message.media, MessageMediaDocument)):
-                    
-                    doc = message.media.document
-                    is_text_file = (
-                        doc.mime_type == 'text/plain' or 
-                        (
-                            hasattr(doc, 'attributes') and 
-                            doc.attributes and 
+                if start_date <= message.date <= end_date:
+                    if message.media and isinstance(message.media, MessageMediaDocument):
+                        
+                        doc = message.media.document
+                        is_text_file = False
+                        
+                        # Check if it's a text file by MIME type
+                        if hasattr(doc, 'mime_type') and doc.mime_type == 'text/plain':
+                            is_text_file = True
+                        
+                        # Check if it's a text file by file extension
+                        if (hasattr(doc, 'attributes') and doc.attributes and 
                             hasattr(doc.attributes[0], 'file_name') and 
                             doc.attributes[0].file_name and 
-                            doc.attributes[0].file_name.lower().endswith('.txt')
-                        )
-                    )
+                            doc.attributes[0].file_name.lower().endswith('.txt')):
+                            is_text_file = True
                     
-                    if is_text_file:
-                        try:
-                            # Download file content directly to memory
-                            file_bytes = await client.download_media(message, bytes)
-                            
-                            if file_bytes:
-                                # Process the file content directly from memory
-                                file_text = file_bytes.decode('utf-8', errors='ignore')
-                                lines = file_text.splitlines()
+                        if is_text_file:
+                            try:
+                                # Download file content directly to memory
+                                file_bytes = await client.download_media(message, bytes)
                                 
-                                for line in lines:
-                                    line = line.strip()
-                                    if (
-                                        line and 
-                                        not PROXY_PATTERN.match(line) and 
-                                        EMAIL_PASS_PATTERN.match(line)
-                                    ):
-                                        all_lines.add(line)
-                                        
-                        except Exception:
-                            continue
+                                if file_bytes:
+                                    # Process the file content directly from memory
+                                    file_text = file_bytes.decode('utf-8', errors='ignore')
+                                    lines = file_text.splitlines()
+                                    
+                                    for line in lines:
+                                        line = line.strip()
+                                        if (line and 
+                                            not PROXY_PATTERN.match(line) and 
+                                            EMAIL_PASS_PATTERN.match(line)):
+                                            all_lines.add(line)
+                                            
+                            except Exception:
+                                continue
             
         except Exception:
             continue
