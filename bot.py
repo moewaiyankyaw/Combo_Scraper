@@ -206,14 +206,11 @@ async def scrape_files_from_group(client, target_channels, target_date):
             
             async for message in client.iter_messages(
                 entity,
-                offset_date=next_day,  # Start from the next day and go backwards
+                offset_date=target_date,
                 reverse=True
             ):
-                # Stop if we've gone past the target date
-                if message.date.date() < target_date:
+                if message.date.date() >= next_day:
                     break
-                    
-                # Only process messages from the target date
                 if (message.date.date() == target_date and 
                     message.media and 
                     isinstance(message.media, MessageMediaDocument)):
@@ -429,20 +426,10 @@ async def setup_bot_handlers(bot_client, user_client):
         
         try:
             input_date = datetime.strptime(event.text, '%d.%m.%Y').date()
-            current_date = datetime.now().date()
-            
-            # Allow dates up to the current date (not future dates)
-            if input_date > current_date:
+            if input_date > datetime.now().date():
                 logger.warning(f"User {event.sender_id} requested future date: {input_date}")
-                await event.reply("❌ Future dates not allowed. Enter today's date or a past date.")
+                await event.reply("❌ Future dates not allowed. Enter a past date.")
                 return
-                
-            # Don't allow dates too far in the past (adjust as needed)
-            if input_date < current_date - timedelta(days=30):
-                logger.warning(f"User {event.sender_id} requested very old date: {input_date}")
-                await event.reply("❌ Date is too far in the past. Please select a date within the last 30 days.")
-                return
-                
         except ValueError:
             if not event.text.startswith('/'):
                 logger.warning(f"User {event.sender_id} sent invalid date format: {event.text}")
