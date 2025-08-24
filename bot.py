@@ -58,9 +58,21 @@ CHANNEL_GROUPS = [
     ],
     # Group 3
     [
-        'https://t.me/combospublic123',
+        'https://t.me/+CVyvhBgtDfI1YzRi',
         'https://t.me/+wE9VErPqOPgyMWFk',
         'http://t.me/+QOWpGkEz6eVlZTQ1'
+    ],
+    # Group 4
+    [
+        'https://t.me/DuffyData',
+        'https://t.me/+tvRxredx2i0zMTgy',
+        'https://t.me/kingofcracking2'
+    ],
+    # Group 5
+    [
+        'https://t.me/+4TnRrTK881g1Y2Ri',
+        'https://t.me/ninjapubliccloud',
+        'https://t.me/combolistmailsgold'
     ]
 ]
 
@@ -310,7 +322,7 @@ async def send_results(bot_client, user_id, lines):
     logger.info(f"Preparing to send {len(lines)} combos to user")
     
     random.shuffle(lines)
-    chunk_size = random.randint(50000, 70000)
+    chunk_size = random.randint(100000, 200000)
     chunks = [lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)]
     
     logger.info(f"Split into {len(chunks)} chunks for sending")
@@ -323,7 +335,7 @@ async def send_results(bot_client, user_id, lines):
         file_content = '\n'.join(chunk)
         file_bytes = file_content.encode('utf-8')
         file_io = io.BytesIO(file_bytes)
-        file_io.name = f"combos_{i}.txt"
+        file_io.name = f"combos_{i}_By_@M69431(PVT).txt"
         
         logger.info(f"Sending chunk {i} ({len(file_bytes)} bytes)...")
         
