@@ -47,25 +47,19 @@ CHANNEL_GROUPS = [
     [
         'https://t.me/+E5x65zAb-GphNjlk',
         'https://t.me/+_7HlFcVVpyYwMjIx',
-        'https://t.me/+U9YOffLRn5JjYjYy',
-        'https://t.me/DuffyData',
-        'https://t.me/+tvRxredx2i0zMTgy'
+        'https://t.me/+U9YOffLRn5JjYjYy'
     ],
     # Group 2
     [
         'https://t.me/freedatabasegroupp',
         'https://t.me/voscall_cloud',
-        'https://t.me/BrowzDataCloud',
-        'https://t.me/kingofcracking2',
-        'https://t.me/+4TnRrTK881g1Y2Ri',
-        'https://t.me/ninjapubliccloud'
+        'https://t.me/BrowzDataCloud'
     ],
     # Group 3
     [
-        'https://t.me/+CVyvhBgtDfI1YzRi',
+        'https://t.me/combospublic123',
         'https://t.me/+wE9VErPqOPgyMWFk',
-        'http://t.me/+QOWpGkEz6eVlZTQ1',
-        'https://t.me/combolistmailsgold'
+        'http://t.me/+QOWpGkEz6eVlZTQ1'
     ]
 ]
 
@@ -172,11 +166,10 @@ async def initialize_client(client_type):
 async def scrape_files_from_group(client, target_channels, target_date):
     """Scrape and process files from a specific group of channels - entirely in memory"""
     all_lines = set()
-    next_day = target_date + timedelta(days=1)
-    files_processed = 0
-    valid_lines_found = 0
+    start_of_day = datetime.combine(target_date, datetime.min.time())
+    end_of_day = datetime.combine(target_date, datetime.max.time())
     
-    for channel_idx, channel in enumerate(target_channels, 1):
+    for channel in target_channels:
         try:
             # Check if client is still connected
             if not client.is_connected():
@@ -184,13 +177,14 @@ async def scrape_files_from_group(client, target_channels, target_date):
                 
             entity = await client.get_entity(channel)
             
+            # Search for messages on the specific date
             async for message in client.iter_messages(
                 entity,
-                offset_date=next_day,  # Start from the next day and go backwards
+                offset_date=end_of_day,
                 reverse=True
             ):
                 # Stop if we've gone past the target date
-                if message.date.date() < target_date:
+                if message.date < start_of_day:
                     break
                     
                 # Only process messages from the target date
@@ -205,21 +199,15 @@ async def scrape_files_from_group(client, target_channels, target_date):
                             hasattr(doc, 'attributes') and 
                             doc.attributes and 
                             hasattr(doc.attributes[0], 'file_name') and 
+                            doc.attributes[0].file_name and 
                             doc.attributes[0].file_name.lower().endswith('.txt')
                         )
                     )
                     
                     if is_text_file:
-                        files_processed += 1
-                        file_name = getattr(doc.attributes[0], 'file_name', 'unknown.txt')
-                        file_size = doc.size
-                        
-                        download_start = time.time()
-                        
                         try:
                             # Download file content directly to memory
                             file_bytes = await client.download_media(message, bytes)
-                            download_time = time.time() - download_start
                             
                             if file_bytes:
                                 # Process the file content directly from memory
@@ -234,7 +222,6 @@ async def scrape_files_from_group(client, target_channels, target_date):
                                         EMAIL_PASS_PATTERN.match(line)
                                     ):
                                         all_lines.add(line)
-                                        valid_lines_found += 1
                                         
                         except Exception:
                             continue
@@ -247,15 +234,11 @@ async def scrape_files_from_group(client, target_channels, target_date):
 async def scrape_files(client, target_date):
     """Scrape files from all channel groups one by one"""
     all_lines = set()
-    total_start_time = time.time()
     
-    for i, channel_group in enumerate(CHANNEL_GROUPS, 1):
-        group_start_time = time.time()
-        
+    for channel_group in CHANNEL_GROUPS:
         try:
             group_lines = await scrape_files_from_group(client, channel_group, target_date)
             all_lines.update(group_lines)
-            
         except Exception:
             continue
     
@@ -268,7 +251,7 @@ async def send_results(bot_client, user_id, lines):
         return
     
     random.shuffle(lines)
-    chunk_size = random.randint(100000, 200000)
+    chunk_size = random.randint(50000, 70000)
     chunks = [lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)]
     
     for i, chunk in enumerate(chunks, 1):
@@ -276,7 +259,7 @@ async def send_results(bot_client, user_id, lines):
         file_content = '\n'.join(chunk)
         file_bytes = file_content.encode('utf-8')
         file_io = io.BytesIO(file_bytes)
-        file_io.name = f"combos_{i}_By_@M69431.txt"
+        file_io.name = f"combos_{i}.txt"
         
         try:
             await bot_client.send_file(
