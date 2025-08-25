@@ -97,6 +97,51 @@ TEST_FILE_OPTIONS = [
     "https://httpbin.org/bytes/256",   # 256B test file
 ]
 
+# Burmese language messages
+BURMESE_MESSAGES = {
+    "start": """🤖 **Combo Scraper Bot**\n\n"""
+            """ရက်စွဲကို DD.MM.YYYY format ဖြင့် ပေးပို့ကာ ထိုရက်အတွက် combos များကို ရယူနိုင်ပါသည်။\n"""
+            """ဥပမာ: `09.08.2025`\n\n"""
+            """ဘော့တုံ့ပြန်မှုနှင့် ဒေါင်းလုဒ်အမြန်နှုန်းကို စမ်းသပ်ရန် /ping ကိုသုံးပါ။""",
+    
+    "invalid_format": "❌ ဖော်မတ်မှားယွင်းနေပါသည်။ DD.MM.YYYY format ကိုသုံးပါ။",
+    "future_date": "❌ အနာဂတ်ရက်စွဲများ ခွင့်မပြုပါ။ အတိတ်ရက်စွဲကို ထည့်သွင်းပါ။",
+    "no_combos": "❌ ဤရက်စွဲအတွက် မည်သည့် combo မှ မတွေ့ရှိပါ။",
+    "searching": "🔍 {} အတွက် ရှာဖွေနေပါသည်...",
+    "found_combos": "✅ {} combos ရှာတွေ့ပြီး\n📤 ဖိုင်များ ပြင်ဆင်နေပါသည်...",
+    "sending": "📤 Group {} မှ combos များ ပို့နေပါသည်...",
+    "done": "🎉 ပြီးဆုံးပါပြီ! {} combos များ ပို့ပြီးပါပြီ",
+    "error": "❌ အမှားအယွင်း: {}",
+    
+    "ping_testing": "🏓 Ping! ချိတ်ဆက်မှု စမ်းသပ်နေပါသည်...",
+    "ping_response": "🏓 ဘော့တုံ့ပြန်မှုအချိန် စမ်းသပ်နေပါသည်...",
+    "ping_download": "🌐 ဒေါင်းလုဒ်အမြန်နှုန်း စမ်းသပ်နေပါသည် (အများဆုံး ၁၅စက္ကန့်)...",
+    
+    "ping_success": (
+        "✅ **ဘော့အခြေအနေ အစီရင်ခံစာ**\n\n"
+        "🤖 **ဘော့တုံ့ပြန်ချိန်**: {:.2f} ms\n"
+        "🌐 **ဒေါင်းလုဒ်အမြန်နှုန်း**: {:.2f} Mbps\n"
+        "📊 **ဒေါင်းလုဒ်စမ်းသပ်မှု**: {} bytes in {:.3f}s\n"
+        "📡 **Ping အချိန်**: {:.2f} ms\n\n"
+        "🟢 **အခြေအနေ**: အွန်လိုင်းနှင့် တုံ့ပြန်မှုရှိသည်"
+    ),
+    
+    "ping_fallback": (
+        "✅ **ဘော့အခြေအနေ အစီရင်ခံစာ**\n\n"
+        "🤖 **ဘော့တုံ့ပြန်ချိန်**: {:.2f} ms\n"
+        "📡 **နက်ဝက်အချိန်**: {:.2f} ms\n"
+        "ℹ️ **မှတ်ချက်**: {}\n\n"
+        "🟢 **အခြေအနေ**: အွန်လိုင်းနှင့် တုံ့ပြန်မှုရှိသည်"
+    ),
+    
+    "ping_error": (
+        "⚠️ **ဘော့အခြေအနေ အစီရင်ခံစာ**\n\n"
+        "🤖 **ဘော့တုံ့ပြန်ချိန်**: {:.2f} ms\n"
+        "❌ **ဒေါင်းလုဒ်စမ်းသပ်မှု မအောင်မြင်**: {}\n\n"
+        "🟡 **အခြေအနေ**: အွန်လိုင်းရှိသော်လည်း ဒေါင်းလုဒ်စမ်းသပ်မှု မအောင်မြင်"
+    )
+}
+
 async def test_download_speed():
     """Test download speed by downloading a small test file with timeout"""
     import aiohttp
@@ -167,11 +212,11 @@ async def test_download_speed():
             "speed_mbps": 0,
             "ping_ms": ping_time,
             "fallback": True,
-            "message": "Used fallback DNS test"
+            "message": "DNS စမ်းသပ်မှုကို အသုံးပြုထားသည်"
         }
     except Exception as e:
         logger.error(f"Fallback test also failed: {e}")
-        return {"success": False, "error": "All download tests failed"}
+        return {"success": False, "error": "ဒေါင်းလုဒ်စမ်းသပ်မှုအားလုံး မအောင်မြင်ပါ"}
 
 async def initialize_client(client_type):
     """Initialize Telegram client with persistent session"""
@@ -197,7 +242,7 @@ async def initialize_client(client_type):
     
     return client
 
-async def scrape_files_from_group(client, target_channels, target_date):
+async def scrape_files_from_group(client, target_channels, target_date, group_number):
     """Scrape and process files from a specific group of channels - entirely in memory"""
     all_lines = set()
     next_day = target_date + timedelta(days=1)
@@ -206,7 +251,7 @@ async def scrape_files_from_group(client, target_channels, target_date):
     
     for channel_idx, channel in enumerate(target_channels, 1):
         try:
-            logger.info(f"Processing channel {channel_idx}/{len(target_channels)}: {channel}")
+            logger.info(f"Processing group {group_number}, channel {channel_idx}/{len(target_channels)}: {channel}")
             
             # Check if client is still connected
             if not client.is_connected():
@@ -276,18 +321,18 @@ async def scrape_files_from_group(client, target_channels, target_date):
                             logger.error(f"Error processing file {file_name}: {e}")
                             continue
             
-            logger.info(f"Finished processing channel {channel}, found {valid_lines_found} valid combos total")
+            logger.info(f"Finished processing group {group_number}, channel {channel}, found {valid_lines_found} valid combos total")
             
         except Exception as e:
             logger.error(f"Error scraping {channel}: {e}")
             continue
     
-    logger.info(f"Group processing complete: Processed {files_processed} files, found {len(all_lines)} unique combos")
+    logger.info(f"Group {group_number} processing complete: Processed {files_processed} files, found {len(all_lines)} unique combos")
     return list(all_lines)
 
-async def scrape_files(client, target_date):
-    """Scrape files from all channel groups one by one"""
-    all_lines = set()
+async def scrape_files_by_group(client, target_date):
+    """Scrape files from all channel groups one by one and return results by group"""
+    all_groups_results = []
     total_start_time = time.time()
     
     logger.info(f"Starting scraping process for date: {target_date}")
@@ -297,132 +342,140 @@ async def scrape_files(client, target_date):
         logger.info(f"Processing channel group {i}/{len(CHANNEL_GROUPS)} with {len(channel_group)} channels")
         
         try:
-            group_lines = await scrape_files_from_group(client, channel_group, target_date)
-            all_lines.update(group_lines)
+            group_lines = await scrape_files_from_group(client, channel_group, target_date, i)
             
             group_time = time.time() - group_start_time
             logger.info(f"Completed group {i} in {group_time:.2f}s - Found {len(group_lines)} combos in this group")
             
+            all_groups_results.append({
+                "group_number": i,
+                "lines": group_lines,
+                "processing_time": group_time
+            })
+            
         except Exception as e:
             logger.error(f"Error processing group {i}: {e}")
+            # Add empty result for this group
+            all_groups_results.append({
+                "group_number": i,
+                "lines": [],
+                "processing_time": 0,
+                "error": str(e)
+            })
             continue
     
     total_time = time.time() - total_start_time
-    logger.info(f"Scraping completed in {total_time:.2f}s - Total unique combos found: {len(all_lines)}")
+    logger.info(f"Scraping completed in {total_time:.2f}s")
     
-    return list(all_lines)
+    return all_groups_results
 
-async def send_results(bot_client, user_id, lines):
-    """Send processed results to user - entirely in memory"""
-    if not lines:
-        logger.warning("No valid combos found to send")
-        await bot_client.send_message(user_id, "❌ No valid combos found for the specified date.")
-        return
+async def send_group_results(bot_client, user_id, group_data):
+    """Send processed results for a single group to user"""
+    group_number = group_data["group_number"]
+    lines = group_data["lines"]
     
-    logger.info(f"Preparing to send {len(lines)} combos to user")
+    if not lines:
+        logger.info(f"No valid combos found for group {group_number}")
+        return False
+    
+    logger.info(f"Preparing to send {len(lines)} combos from group {group_number} to user")
     
     random.shuffle(lines)
     chunk_size = random.randint(100000, 200000)
     chunks = [lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)]
     
-    logger.info(f"Split into {len(chunks)} chunks for sending")
+    logger.info(f"Group {group_number} split into {len(chunks)} chunks for sending")
     
     for i, chunk in enumerate(chunks, 1):
         send_start = time.time()
-        logger.info(f"Preparing chunk {i}/{len(chunks)} with {len(chunk)} combos")
+        logger.info(f"Preparing chunk {i}/{len(chunks)} from group {group_number} with {len(chunk)} combos")
         
         # Create file in memory
         file_content = '\n'.join(chunk)
         file_bytes = file_content.encode('utf-8')
         file_io = io.BytesIO(file_bytes)
-        file_io.name = f"combos_{i}_By_@M69431(PVT).txt"
+        file_io.name = f"combos_group{group_number}_{i}_By_@M69431(PVT).txt"
         
-        logger.info(f"Sending chunk {i} ({len(file_bytes)} bytes)...")
+        logger.info(f"Sending chunk {i} from group {group_number} ({len(file_bytes)} bytes)...")
         
         try:
             await bot_client.send_file(
                 user_id,
                 file_io,
-                caption=f"📅 Part {i}/{len(chunks)} | 📝 {len(chunk):,} lines\n🔄 Mixed & Deduplicated"
+                caption=f"📁 Group {group_number} | 📄 Part {i}/{len(chunks)} | 📝 {len(chunk):,} lines\n🔄 Mixed & Deduplicated"
             )
             
             send_time = time.time() - send_start
-            logger.info(f"Successfully sent chunk {i} in {send_time:.2f}s")
+            logger.info(f"Successfully sent chunk {i} from group {group_number} in {send_time:.2f}s")
             
         except Exception as e:
-            logger.error(f"Error sending chunk {i}: {e}")
+            logger.error(f"Error sending chunk {i} from group {group_number}: {e}")
             # Try to send an error message
             try:
                 await bot_client.send_message(
                     user_id,
-                    f"❌ Error sending part {i}: {str(e)}"
+                    f"❌ Group {group_number} အပိုင်း {i} ပို့ရာတွင် အမှားအယွင်း: {str(e)}"
                 )
             except:
                 pass
+            return False
     
-    logger.info(f"Finished sending all {len(chunks)} chunks to user")
+    logger.info(f"Finished sending all {len(chunks)} chunks from group {group_number} to user")
+    return True
 
 async def setup_bot_handlers(bot_client, user_client):
     """Configure bot command handlers"""
     @bot_client.on(events.NewMessage(pattern='/start'))
     async def start_handler(event):
         logger.info(f"Received /start command from user {event.sender_id}")
-        await event.reply("""🤖 **Combo Scraper Bot**\n\n"""
-                        """Send a date in DD.MM.YYYY format to scrape combos from that day.\n"""
-                        """Example: `09.08.2025`\n\n"""
-                        """Use /ping to test bot response time and download speed""")
+        await event.reply(BURMESE_MESSAGES["start"])
 
     @bot_client.on(events.NewMessage(pattern='/ping'))
     async def ping_handler(event):
         logger.info(f"Received /ping command from user {event.sender_id}")
         
         # Send initial response
-        msg = await event.reply("🏓 Pong! Testing connection...")
+        msg = await event.reply(BURMESE_MESSAGES["ping_testing"])
         
         # Test 1: Bot response time
         bot_response_start = time.time()
-        await msg.edit("🏓 Testing bot response time...")
+        await msg.edit(BURMESE_MESSAGES["ping_response"])
         bot_response_time = (time.time() - bot_response_start) * 1000  # Convert to ms
         
         # Test 2: Download speed test with timeout
-        await msg.edit("🌐 Testing download speed (max 15s)...")
+        await msg.edit(BURMESE_MESSAGES["ping_download"])
         
         # Run download test with a timeout to prevent hanging
         try:
             speed_test_task = asyncio.create_task(test_download_speed())
             speed_test_result = await asyncio.wait_for(speed_test_task, timeout=15.0)
         except asyncio.TimeoutError:
-            speed_test_result = {"success": False, "error": "Download test timed out after 15 seconds"}
+            speed_test_result = {"success": False, "error": "ဒေါင်းလုဒ်စမ်းသပ်မှု ၁၅စက္ကန့်ကြာပြီး အချိန်စီးသွားသည်"}
             logger.error("Download test timed out")
         except Exception as e:
-            speed_test_result = {"success": False, "error": f"Download test error: {str(e)}"}
+            speed_test_result = {"success": False, "error": f"ဒေါင်းလုဒ်စမ်းသပ်မှုအမှား: {str(e)}"}
             logger.error(f"Download test failed: {e}")
         
         # Format the results
         if speed_test_result["success"]:
             if speed_test_result.get("fallback", False):
-                response_message = (
-                    f"✅ **Bot Status Report**\n\n"
-                    f"🤖 **Bot Response Time**: {bot_response_time:.2f} ms\n"
-                    f"📡 **Network Latency**: {speed_test_result['ping_ms']:.2f} ms\n"
-                    f"ℹ️ **Note**: {speed_test_result.get('message', 'Used fallback test')}\n\n"
-                    f"🟢 **Status**: Online and responsive"
+                response_message = BURMESE_MESSAGES["ping_fallback"].format(
+                    bot_response_time,
+                    speed_test_result['ping_ms'],
+                    speed_test_result.get('message', 'အရန်နည်းလမ်းကို အသုံးပြုထားသည်')
                 )
             else:
-                response_message = (
-                    f"✅ **Bot Status Report**\n\n"
-                    f"🤖 **Bot Response Time**: {bot_response_time:.2f} ms\n"
-                    f"🌐 **Download Speed**: {speed_test_result['speed_mbps']:.2f} Mbps\n"
-                    f"📊 **Download Test**: {speed_test_result['file_size']} bytes in {speed_test_result['download_time']:.3f}s\n"
-                    f"📡 **Ping Time**: {speed_test_result['ping_ms']:.2f} ms\n\n"
-                    f"🟢 **Status**: Online and responsive"
+                response_message = BURMESE_MESSAGES["ping_success"].format(
+                    bot_response_time,
+                    speed_test_result['speed_mbps'],
+                    speed_test_result['file_size'],
+                    speed_test_result['download_time'],
+                    speed_test_result['ping_ms']
                 )
         else:
-            response_message = (
-                f"⚠️ **Bot Status Report**\n\n"
-                f"🤖 **Bot Response Time**: {bot_response_time:.2f} ms\n"
-                f"❌ **Download Test Failed**: {speed_test_result.get('error', 'Unknown error')}\n\n"
-                f"🟡 **Status**: Online but download test failed"
+            response_message = BURMESE_MESSAGES["ping_error"].format(
+                bot_response_time,
+                speed_test_result.get('error', 'မသိရှိရသေးသော အမှားအယွင်း')
             )
         
         await msg.edit(response_message)
@@ -440,16 +493,17 @@ async def setup_bot_handlers(bot_client, user_client):
             input_date = datetime.strptime(event.text, '%d.%m.%Y').date()
             if input_date > datetime.now().date():
                 logger.warning(f"User {event.sender_id} requested future date: {input_date}")
-                await event.reply("❌ Future dates not allowed. Enter a past date.")
+                await event.reply(BURMESE_MESSAGES["future_date"])
                 return
         except ValueError:
             if not event.text.startswith('/'):
                 logger.warning(f"User {event.sender_id} sent invalid date format: {event.text}")
-                await event.reply("❌ Invalid format. Use DD.MM.YYYY")
+                await event.reply(BURMESE_MESSAGES["invalid_format"])
             return
 
         logger.info(f"User {event.sender_id} requested scraping for date: {input_date}")
-        msg = await event.reply(f"🔍 Searching for {input_date.strftime('%d.%m.%Y')}...")
+        formatted_date = input_date.strftime('%d.%m.%Y')
+        msg = await event.reply(BURMESE_MESSAGES["searching"].format(formatted_date))
         
         try:
             # Ensure user client is connected
@@ -457,23 +511,40 @@ async def setup_bot_handlers(bot_client, user_client):
                 logger.info("User client disconnected, reconnecting...")
                 await user_client.connect()
                 
-            lines = await scrape_files(user_client, input_date)
-            if not lines:
+            # Scrape files by group
+            group_results = await scrape_files_by_group(user_client, input_date)
+            
+            total_combos = sum(len(group["lines"]) for group in group_results)
+            if total_combos == 0:
                 logger.info(f"No combos found for date {input_date}")
-                await msg.edit("❌ No valid combos found for this date.")
+                await msg.edit(BURMESE_MESSAGES["no_combos"])
                 return
             
-            logger.info(f"Found {len(lines)} combos, preparing to send to user {event.sender_id}")
-            await msg.edit(f"✅ Found {len(lines):,} combos\n📤 Preparing files...")
+            logger.info(f"Found {total_combos} combos across {len(group_results)} groups, preparing to send to user {event.sender_id}")
+            await msg.edit(BURMESE_MESSAGES["found_combos"].format(total_combos))
             
-            await send_results(bot_client, event.chat_id, lines)
+            # Send results group by group
+            for group_data in group_results:
+                group_number = group_data["group_number"]
+                group_lines = group_data["lines"]
+                
+                if group_lines:
+                    # Notify user which group is being processed
+                    await msg.edit(BURMESE_MESSAGES["sending"].format(group_number))
+                    
+                    # Send the group results
+                    success = await send_group_results(bot_client, event.chat_id, group_data)
+                    
+                    if not success:
+                        logger.error(f"Failed to send group {group_number} results")
+                        # Continue with next group despite failure
             
-            logger.info(f"Successfully sent all files to user {event.sender_id}")
-            await msg.edit(f"🎉 Done! Sent {len(lines):,} combos")
+            logger.info(f"Successfully sent all group files to user {event.sender_id}")
+            await msg.edit(BURMESE_MESSAGES["done"].format(total_combos))
             
         except Exception as e:
             logger.error(f"Error processing request from user {event.sender_id}: {e}")
-            await msg.edit(f"❌ Error: {str(e)}")
+            await msg.edit(BURMESE_MESSAGES["error"].format(str(e)))
 
 async def main():
     """Main application entry point"""
