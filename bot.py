@@ -46,33 +46,50 @@ SESSION_FILES = {
 CHANNEL_GROUPS = [
     # Group 1
     [
-        'https://t.me/+E5x65zAb-GphNjlk',
+        'https://t.me/+V-4_M2zyQKwzNjM0',
         'https://t.me/+_7HlFcVVpyYwMjIx',
-        'https://t.me/+U9YOffLRn5JjYjYy'
+        'https://t.me/+U9YOffLRn5JjYjYy',
     ],
     # Group 2
     [
         'https://t.me/freedatabasegroupp',
         'https://t.me/voscall_cloud',
-        'https://t.me/BrowzDataCloud'
+        'https://t.me/BrowzDataCloud',
     ],
     # Group 3
     [
         'https://t.me/+CVyvhBgtDfI1YzRi',
         'https://t.me/+wE9VErPqOPgyMWFk',
-        'http://t.me/+QOWpGkEz6eVlZTQ1'
+        'https://t.me/DuffyData',
     ],
     # Group 4
     [
-        'https://t.me/DuffyData',
         'https://t.me/+tvRxredx2i0zMTgy',
-        'https://t.me/kingofcracking2'
+        'https://t.me/kingofcracking2',
+        'https://t.me/+4TnRrTK881g1Y2Ri',
     ],
     # Group 5
     [
-        'https://t.me/+4TnRrTK881g1Y2Ri',
-        'https://t.me/ninjapubliccloud',
-        'https://t.me/combolistmailsgold'
+        'https://t.me/combolistmailsgold',
+        'https://t.me/+80wOrSg9oYUwMjk0',
+        'https://t.me/+NjbdkocuBp0yNDE0',
+    ],
+    # Group 6
+    [
+        'https://t.me/+u5yMfptNFVQxNzMx',
+        'https://t.me/+02Srw1hStJFhOGRh',
+        'https://t.me/+kDnugf7u1GpjODBk',
+    ],
+    # Group 7
+    [
+        'https://t.me/AI_CloudFree',
+        'https://t.me/cyclonecombo',
+        'https://t.me/+TYCmOLZTMX05NmJh',
+    ],
+    # Group 8
+    [
+        'https://t.me/+tCb4xYUL7q41YzUy',
+        'https://t.me/+ft4uH8wSeZE3MmZi',
     ]
 ]
 
